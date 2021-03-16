@@ -869,7 +869,10 @@ cryptodev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg_)
 	case CIOCASYMFEAT:
 		ses = 0;
 		if (crypto_has_alg("rsa", 0, 0)) {
-			ses = CRF_MOD_EXP;
+			ses |= CRF_MOD_EXP;
+		}
+		if (crypto_has_alg("ecdsa", 0, 0)) {
+			ses |= CRF_ECDSA_SIGN | CRF_ECDSA_VERIFY;
 		}
 		return put_user(ses, p);
 	case CRIOGET:

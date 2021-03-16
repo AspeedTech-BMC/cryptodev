@@ -56,6 +56,14 @@ enum cryptodev_crypto_op_t {
 	CRYPTO_ALGORITHM_ALL, /* Keep updated - see below */
 };
 
+enum cryptodev_ecc_curve {
+	CRYPTO_ECC_CURVE_NIST_P192 = 1,
+	CRYPTO_ECC_CURVE_NIST_P224 = 2,
+	CRYPTO_ECC_CURVE_NIST_P256 = 3,
+	CRYPTO_ECC_CURVE_NIST_P384 = 4,
+	CRYPTO_ECC_CURVE_NIST_P521 = 5,
+};
+
 #define	CRYPTO_ALGORITHM_MAX	(CRYPTO_ALGORITHM_ALL - 1)
 
 /* Values for ciphers */
@@ -255,6 +263,8 @@ enum cryptodev_crk_op_t {
 	CRK_DSA_SIGN = 2,
 	CRK_DSA_VERIFY = 3,
 	CRK_DH_COMPUTE_KEY = 4,
+	CRK_ECDSA_SIGN = 5,
+	CRK_ECDSA_VERIFY = 6,
 	CRK_ALGORITHM_ALL
 };
 
@@ -279,6 +289,8 @@ struct cphash_op {
 #define CRF_DSA_SIGN		(1 << CRK_DSA_SIGN)
 #define CRF_DSA_VERIFY		(1 << CRK_DSA_VERIFY)
 #define CRF_DH_COMPUTE_KEY	(1 << CRK_DH_COMPUTE_KEY)
+#define CRF_ECDSA_SIGN		(1 << CRK_ECDSA_SIGN)
+#define CRF_ECDSA_VERIFY	(1 << CRK_ECDSA_VERIFY)
 
 
 /* ioctl's. Compatible with old linux cryptodev.h

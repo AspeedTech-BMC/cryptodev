@@ -273,24 +273,51 @@ int crypto_run_asym(struct kernel_crypt_pkop *pkop)
 {
 	int err;
 
-	pkop->s = crypto_alloc_akcipher("rsa", 0, 0);
-	if (IS_ERR(pkop->s)) {
-		return PTR_ERR(pkop->s);
-	}
-
-	pkop->req = akcipher_request_alloc(pkop->s, GFP_KERNEL);
-	if (pkop->req == NULL) {
-		err = -ENOMEM;
-		goto out_free_tfm;
-	}
-
 	switch (pkop->pkop.crk_op) {
 	case CRK_MOD_EXP: /* RSA_PUB or PRIV form 1 */
+		pkop->s = crypto_alloc_akcipher("rsa", 0, 0);
+		if (IS_ERR(pkop->s)) {
+			return PTR_ERR(pkop->s);
+		}
+
+		pkop->req = akcipher_request_alloc(pkop->s, GFP_KERNEL);
+		if (pkop->req == NULL) {
+			err = -ENOMEM;
+			goto out_free_tfm;
+		}
 		if (pkop->pkop.crk_iparams != 3 && pkop->pkop.crk_oparams != 1) {
 			err = -EINVAL;
 			goto out_free_req;
 		}
 		err = crypto_bn_modexp(pkop);
+		break;
+	case CRK_ECDSA_SIGN:
+	case CRK_ECDSA_VERIFY:
+		
+		pkop->s = crypto_alloc_akcipher("ecdsa", 0, 0);
+		if (IS_ERR(pkop->s)) {
+			return PTR_ERR(pkop->s);
+		}
+
+		pkop->req = akcipher_request_alloc(pkop->s, GFP_KERNEL);
+		if (pkop->req == NULL) {
+			err = -ENOMEM;
+			goto out_free_req;
+		}
+
+		if (pkop->pkop.crk_op == CRK_ECDSA_SIGN) {
+			if (pkop->pkop.crk_iparams != 3 && pkop->pkop.crk_oparams != 2) {
+				err = -EINVAL;
+				goto out_free_req;
+			}
+		} else {
+			if (pkop->pkop.crk_iparams != 6 && pkop->pkop.crk_oparams != 0) {
+				err = -EINVAL;
+				goto out_free_req;
+			}
+		}
+		
+		err = cryptodev_ecdsa(pkop);
 		break;
 	default:
 		err = -EINVAL;

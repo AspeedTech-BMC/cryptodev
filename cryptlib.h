@@ -101,6 +101,7 @@ int cryptodev_hash_copy(struct hash_data *dst, struct hash_data *src);
 
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 3, 0))
 int crypto_bn_modexp(struct kernel_crypt_pkop *pkop);
+int cryptodev_ecdsa(struct kernel_crypt_pkop *pkop);
 #endif
 
 #endif

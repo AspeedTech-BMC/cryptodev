@@ -33,6 +33,7 @@
 #include <crypto/hash.h>
 #include <crypto/cryptodev.h>
 #include <crypto/aead.h>
+#include <crypto/ecc.h>
 #include <linux/rtnetlink.h>
 #include <crypto/authenc.h>
 #include "cryptodev_int.h"
@@ -45,6 +46,20 @@
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0))
 extern const struct crypto_type crypto_givcipher_type;
 #endif
+
+// void print_buf(const u8 *buf, int len)
+// {
+// 	int i;
+
+// 	for (i = 0; i < len; i++) {
+// 		if (i % 0x10 == 0)
+// 			printk(KERN_CONT "%05x: ", i);
+// 		printk(KERN_CONT "%02x ", buf[i]);
+// 		if ((i - 0xf) % 0x10 == 0)
+// 			printk(KERN_CONT "\n");
+// 	}
+// 	printk(KERN_CONT "\n");
+// }
 
 static void cryptodev_complete(struct crypto_async_request *req, int err)
 {
@@ -700,6 +715,7 @@ int crypto_bn_modexp(struct kernel_crypt_pkop *pkop)
 	// reverse_buf(m_buf, m_sz);
 
 	c_sz_max = crypto_akcipher_maxsize(pkop->s);
+	// TODO check the condition
 	if (c_sz > c_sz_max) {
 		err = -EINVAL;
 		goto free_m_buf;
@@ -733,5 +749,355 @@ free_key:
 	kfree(ber_key);
 
 	return err;
+}
+
+void *cryptodev_alloc_ecdsa_priv_key(struct kernel_crypt_pkop *pkop,
+		uint32_t *key_len)
+{
+	struct crypt_kop *cop = &pkop->pkop;
+	uint8_t *key_buf;
+	uint32_t key_buf_len;
+	uint8_t *d;
+	size_t d_sz;
+	uint8_t curve_id_in;
+	uint8_t curve_id;
+	uint8_t nbytes;
+
+	/* 
+	 * ECDSA private key format:
+	 * VERSION:  1 Byte
+	 * CURVE_ID: 1 Byte
+	 * D:        CURVE_DIGITS_BYTES
+	 */
+	if (unlikely(copy_from_user(&curve_id_in, cop->crk_param[0].crp_p, 1))) {
+		return NULL;
+	}
+
+	switch (curve_id_in) {
+	case CRYPTO_ECC_CURVE_NIST_P192:
+		curve_id = ECC_CURVE_NIST_P192;
+		nbytes = ECC_CURVE_NIST_P192_DIGITS << ECC_DIGITS_TO_BYTES_SHIFT;
+		break;
+	case CRYPTO_ECC_CURVE_NIST_P256:
+		curve_id = ECC_CURVE_NIST_P256;
+		nbytes = ECC_CURVE_NIST_P192_DIGITS << ECC_DIGITS_TO_BYTES_SHIFT;
+		break;
+	default:
+		return NULL;
+	}
+
+	key_buf_len = 2 + nbytes;
+	key_buf = kzalloc(key_buf_len, GFP_DMA);
+	d_sz = (cop->crk_param[2].crp_nbits + 7)/8;
+
+	/* Set version */
+	key_buf[0] = 1;
+
+	/* Set cureve ID */
+	key_buf[1] = curve_id;
+	
+	/* Copy d*/
+	d = key_buf + 2;
+	if (unlikely(copy_from_user(d, cop->crk_param[2].crp_p, d_sz))) {
+		goto free_key;
+	}
+	reverse_buf(d, d_sz);
+
+	*key_len = key_buf_len;
+
+	return key_buf;
+
+free_key:
+	kfree(key_buf);
+	printk("fail\n");
+	return NULL;
+}
+
+void *cryptodev_alloc_ecdsa_pub_key(struct kernel_crypt_pkop *pkop,
+		uint32_t *key_len)
+{
+	struct crypt_kop *cop = &pkop->pkop;
+	uint8_t *key_buf;
+	uint32_t key_buf_len;
+	uint8_t curve_id_in;
+	uint8_t curve_id;
+	uint8_t nbytes;
+	uint8_t *Qx;
+	uint8_t *Qy;
+	size_t qx_sz;
+	size_t qy_sz;
+
+	/* 
+	 * ECDSA public key format:
+	 * VERSION:  1 Byte
+	 * CURVE_ID: 1 Byte
+	 * D:        CURVE_DIGITS_BYTES (0 in public key)
+	 * Qx:       CURVE_DIGITS_BYTES
+	 * Qy:       CURVE_DIGITS_BYTES
+	 */
+
+	if (unlikely(copy_from_user(&curve_id_in, cop->crk_param[0].crp_p, 1))) {
+		return NULL;
+	}
+
+	switch (curve_id_in) {
+	case CRYPTO_ECC_CURVE_NIST_P192:
+		curve_id = ECC_CURVE_NIST_P192;
+		nbytes = ECC_CURVE_NIST_P192_DIGITS << ECC_DIGITS_TO_BYTES_SHIFT;
+		break;
+	case CRYPTO_ECC_CURVE_NIST_P256:
+		curve_id = ECC_CURVE_NIST_P256;
+		nbytes = ECC_CURVE_NIST_P256_DIGITS << ECC_DIGITS_TO_BYTES_SHIFT;
+		break;
+	default:
+		return NULL;
+	}
+
+
+	key_buf_len = 2 + 3 * nbytes;
+	key_buf = kzalloc(key_buf_len, GFP_DMA);
+
+	qx_sz = (cop->crk_param[4].crp_nbits + 7)/8;
+	qy_sz = (cop->crk_param[5].crp_nbits + 7)/8;
+
+	/* Set version */
+	key_buf[0] = 1;
+
+	/* Set cureve ID */
+	key_buf[1] = curve_id;
+
+	/* Copy Qx, Qy*/
+	Qx = key_buf + 2 + nbytes;
+	Qy = Qx + nbytes;
+	if (unlikely(copy_from_user(Qx, cop->crk_param[4].crp_p, qx_sz))) {
+		goto free_key;
+	}
+
+	reverse_buf(Qx, qx_sz);
+	
+	if (unlikely(copy_from_user(Qy, cop->crk_param[5].crp_p, qy_sz))) {
+		goto free_key;
+	}
+	reverse_buf(Qy, qy_sz);
+
+	// printk("qx\n");
+	// print_buf(Qx, qx_sz);
+	// printk("qy\n");
+	// print_buf(Qy, qx_sz);
+
+	*key_len = key_buf_len;
+
+	return key_buf;
+
+free_key:
+	kfree(key_buf);
+	return NULL;
+}
+
+int cryptodev_ecdsa_sign(struct kernel_crypt_pkop *pkop)
+{
+	struct crypt_kop *cop = &pkop->pkop;
+	uint8_t *key_buf;
+	uint32_t key_buf_len;
+	size_t e_sz;
+	size_t sign_sz;
+	size_t sign_sz_max;
+	uint8_t *e_buf;
+	uint8_t *sign_buf;
+	struct scatterlist src;
+	struct scatterlist dst;
+	int err;
+
+	/*
+	 * input:
+	 * crk_param[0]: curve ID
+	 * crk_param[1]: e, message
+	 * crk_param[2]: d, private key
+	 * output:
+	 * crk_param[3]: r, signature
+	 * crk_param[4]: s, signature
+	 */
+
+	key_buf = cryptodev_alloc_ecdsa_priv_key(pkop, &key_buf_len);
+	if (!key_buf) {
+		return -ENOMEM;
+	}
+
+	err = crypto_akcipher_set_priv_key(pkop->s, key_buf, key_buf_len);
+	if (err != 0) {
+		goto free_key;
+	}
+
+	e_sz = (cop->crk_param[1].crp_nbits + 7)/8;
+
+	if (cop->crk_param[3].crp_nbits != cop->crk_param[4].crp_nbits){
+		err = -EINVAL;
+		goto free_key;
+	}
+	sign_sz = (cop->crk_param[3].crp_nbits + 7)/8;
+
+	e_buf = kmalloc(e_sz, GFP_DMA);
+	if (!e_buf) {
+		err = -ENOMEM;
+		goto free_key;
+	}
+
+	err = copy_from_user(e_buf, cop->crk_param[1].crp_p, e_sz);
+	if (err != 0) {
+		goto free_e_buf;
+	}
+	reverse_buf(e_buf, e_sz);
+
+	// printk("e\n");
+	// print_buf(e_buf, e_sz);
+
+	sign_sz_max = crypto_akcipher_maxsize(pkop->s);
+	if (sign_sz * 2 < sign_sz_max) {
+		err = -EINVAL;
+		goto free_e_buf;
+	}
+	sign_buf = kzalloc(sign_sz * 2, GFP_KERNEL);
+	if (!sign_buf) {
+		goto free_e_buf;
+	}
+
+	sg_init_one(&src, e_buf, e_sz);
+	sg_init_one(&dst, sign_buf, sign_sz * 2);
+
+	init_completion(&pkop->result.completion);
+	akcipher_request_set_callback(pkop->req, 0,
+			cryptodev_complete, &pkop->result);
+	akcipher_request_set_crypt(pkop->req, &src, &dst, e_sz, sign_sz * 2);
+
+	err = crypto_akcipher_sign(pkop->req);
+	err = waitfor(&pkop->result, err);
+
+	if (err == 0) {
+		// reverse_buf(sign_buf, sign_sz);
+		err = copy_to_user(cop->crk_param[3].crp_p, sign_buf, sign_sz);
+		if (err) {
+			goto err;
+		}
+
+		// reverse_buf(sign_buf + sign_sz, sign_sz);
+		err = copy_to_user(cop->crk_param[4].crp_p, sign_buf + sign_sz, sign_sz);
+		if (err) {
+			goto err;
+		}
+	}
+
+err:
+	kfree(sign_buf);
+free_e_buf:
+	kfree(e_buf);
+free_key:
+	kfree(key_buf);
+
+	return err;
+}
+
+int cryptodev_ecdsa_verify(struct kernel_crypt_pkop *pkop)
+{
+	struct crypt_kop *cop = &pkop->pkop;
+	uint8_t *key_buf;
+	uint32_t key_buf_len;
+	size_t e_sz;
+	size_t r_sz;
+	size_t s_sz;
+	uint8_t *e_buf;
+	uint8_t *r_buf;
+	uint8_t *s_buf;
+	struct scatterlist src_tab[3];
+	int err;
+
+	/*
+	 * input:
+	 * crk_param[0]: curve ID
+	 * crk_param[1]: e, message
+	 * crk_param[2]: r, signature
+	 * crk_param[3]: s, signature
+	 * crk_param[4]: Qx, public key
+	 * crk_param[5]: Qy, public key
+	 * output:
+	 * crk_param[6]: pass or fail
+	 */
+
+	key_buf = cryptodev_alloc_ecdsa_pub_key(pkop, &key_buf_len);
+	if (!key_buf) {
+		return -ENOMEM;
+	}
+
+	err = crypto_akcipher_set_pub_key(pkop->s, key_buf, key_buf_len);
+	if (err != 0) {
+		goto free_key;
+	}
+
+	e_sz = (cop->crk_param[1].crp_nbits + 7)/8;
+	r_sz = (cop->crk_param[2].crp_nbits + 7)/8;
+	s_sz = (cop->crk_param[3].crp_nbits + 7)/8;
+
+	e_buf = kmalloc(e_sz + r_sz + s_sz, GFP_DMA);
+	r_buf = e_buf + e_sz;
+	s_buf = r_buf + r_sz;
+
+	if (!e_buf) {
+		err = -ENOMEM;
+		goto free_key;
+	}
+
+	err = copy_from_user(e_buf, cop->crk_param[1].crp_p, e_sz);
+	if (err != 0) {
+		goto free_e_buf;
+	}
+	reverse_buf(e_buf, e_sz);
+
+
+	err = copy_from_user(r_buf, cop->crk_param[2].crp_p, r_sz);
+	if (err != 0) {
+		goto free_e_buf;
+	}
+	reverse_buf(r_buf, r_sz);
+
+	err = copy_from_user(s_buf, cop->crk_param[3].crp_p, s_sz);
+	if (err != 0) {
+		goto free_e_buf;
+	}
+	reverse_buf(s_buf, s_sz);
+
+	// printk("e\n");
+	// print_buf(e_buf, e_sz);
+	// printk("r\n");
+	// print_buf(r_buf, r_sz);
+	// printk("s\n");
+	// print_buf(s_buf, s_sz);
+
+	sg_init_table(src_tab, 3);
+	sg_set_buf(&src_tab[0], e_buf, e_sz);
+	sg_set_buf(&src_tab[1], r_buf, r_sz);
+	sg_set_buf(&src_tab[2], s_buf, s_sz);
+
+	akcipher_request_set_crypt(pkop->req, src_tab, NULL, e_sz, 0);
+
+	err = crypto_akcipher_verify(pkop->req);
+	err = waitfor(&pkop->result, err);
+
+free_e_buf:
+	kfree(e_buf);
+free_key:
+	kfree(key_buf);
+
+	return err;
+}
+
+int cryptodev_ecdsa(struct kernel_crypt_pkop *pkop)
+{
+	switch (pkop->pkop.crk_op) {
+	case CRK_ECDSA_SIGN:
+		return cryptodev_ecdsa_sign(pkop);
+	case CRK_ECDSA_VERIFY:
+		return cryptodev_ecdsa_verify(pkop);
+	}
+
+	return -EINVAL;
 }
 #endif
