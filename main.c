@@ -291,6 +291,7 @@ int crypto_run_asym(struct kernel_crypt_pkop *pkop)
 		}
 		err = crypto_bn_modexp(pkop);
 		break;
+#ifdef CRYPTODEV_ECDSA_ENABLE
 	case CRK_ECDSA_SIGN:
 	case CRK_ECDSA_VERIFY:
 		
@@ -319,6 +320,7 @@ int crypto_run_asym(struct kernel_crypt_pkop *pkop)
 		
 		err = cryptodev_ecdsa(pkop);
 		break;
+#endif
 	default:
 		err = -EINVAL;
 		break;

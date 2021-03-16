@@ -33,7 +33,6 @@
 #include <crypto/hash.h>
 #include <crypto/cryptodev.h>
 #include <crypto/aead.h>
-#include <crypto/ecc.h>
 #include <linux/rtnetlink.h>
 #include <crypto/authenc.h>
 #include "cryptodev_int.h"
@@ -42,7 +41,9 @@
 #include <linux/asn1_ber_bytecode.h>
 #include <crypto/akcipher.h>
 #endif
-
+#ifdef CRYPTODEV_ECDSA_ENABLE
+#include <crypto/ecc.h>
+#endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0))
 extern const struct crypto_type crypto_givcipher_type;
 #endif
@@ -751,6 +752,7 @@ free_key:
 	return err;
 }
 
+#ifdef CRYPTODEV_ECDSA_ENABLE
 void *cryptodev_alloc_ecdsa_priv_key(struct kernel_crypt_pkop *pkop,
 		uint32_t *key_len)
 {
@@ -1100,4 +1102,5 @@ int cryptodev_ecdsa(struct kernel_crypt_pkop *pkop)
 
 	return -EINVAL;
 }
+#endif
 #endif
