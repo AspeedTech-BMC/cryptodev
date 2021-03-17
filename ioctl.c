@@ -138,6 +138,18 @@ crypto_create_session(struct fcrypt *fcr, struct session_op *sop)
 	case CRYPTO_3DES_CBC:
 		alg_name = "cbc(des3_ede)";
 		break;
+	case CRYPTO_3DES_ECB:
+		alg_name = "ecb(des3_ede)";
+		break;
+	case CRYPTO_3DES_OFB:
+		alg_name = "ofb(des3_ede)";
+		break;
+	case CRYPTO_3DES_CTR:
+		alg_name = "ctr(des3_ede)";
+		break;
+	case CRYPTO_3DES_CFB64:
+		alg_name = "cfb(des3_ede)";
+		break;
 	case CRYPTO_BLF_CBC:
 		alg_name = "cbc(blowfish)";
 		break;
@@ -146,6 +158,12 @@ crypto_create_session(struct fcrypt *fcr, struct session_op *sop)
 		break;
 	case CRYPTO_AES_ECB:
 		alg_name = "ecb(aes)";
+		break;
+	case CRYPTO_AES_OFB:
+		alg_name = "ofb(aes)";
+		break;
+	case CRYPTO_AES_CFB128:
+		alg_name = "cfb(aes)";
 		break;
 	case CRYPTO_CAMELLIA_CBC:
 		alg_name = "cbc(camellia)";
@@ -203,6 +221,12 @@ crypto_create_session(struct fcrypt *fcr, struct session_op *sop)
 	case CRYPTO_SHA2_512_HMAC:
 		hash_name = "hmac(sha512)";
 		break;
+	case CRYPTO_SHA2_512_224_HMAC:
+		hash_name = "hmac(sha512_224)";
+		break;
+	case CRYPTO_SHA2_512_256_HMAC:
+		hash_name = "hmac(sha512_256)";
+		break;
 
 	/* non-hmac cases */
 	case CRYPTO_MD5:
@@ -231,6 +255,14 @@ crypto_create_session(struct fcrypt *fcr, struct session_op *sop)
 		break;
 	case CRYPTO_SHA2_512:
 		hash_name = "sha512";
+		hmac_mode = 0;
+		break;
+	case CRYPTO_SHA2_512_224:
+		hash_name = "sha512_224";
+		hmac_mode = 0;
+		break;
+	case CRYPTO_SHA2_512_256:
+		hash_name = "sha512_256";
 		hmac_mode = 0;
 		break;
 	default:
