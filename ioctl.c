@@ -138,6 +138,18 @@ crypto_create_session(struct fcrypt *fcr, struct session_op *sop)
 	case CRYPTO_3DES_CBC:
 		alg_name = "cbc(des3_ede)";
 		break;
+	case CRYPTO_3DES_ECB:
+		alg_name = "ecb(des3_ede)";
+		break;
+	case CRYPTO_3DES_OFB:
+		alg_name = "ofb(des3_ede)";
+		break;
+	case CRYPTO_3DES_CTR:
+		alg_name = "ctr(des3_ede)";
+		break;
+	case CRYPTO_3DES_CFB64:
+		alg_name = "cfb(des3_ede)";
+		break;
 	case CRYPTO_BLF_CBC:
 		alg_name = "cbc(blowfish)";
 		break;
@@ -146,6 +158,12 @@ crypto_create_session(struct fcrypt *fcr, struct session_op *sop)
 		break;
 	case CRYPTO_AES_ECB:
 		alg_name = "ecb(aes)";
+		break;
+	case CRYPTO_AES_OFB:
+		alg_name = "ofb(aes)";
+		break;
+	case CRYPTO_AES_CFB128:
+		alg_name = "cfb(aes)";
 		break;
 	case CRYPTO_CAMELLIA_CBC:
 		alg_name = "cbc(camellia)";
@@ -203,6 +221,12 @@ crypto_create_session(struct fcrypt *fcr, struct session_op *sop)
 	case CRYPTO_SHA2_512_HMAC:
 		hash_name = "hmac(sha512)";
 		break;
+	case CRYPTO_SHA2_512_224_HMAC:
+		hash_name = "hmac(sha512_224)";
+		break;
+	case CRYPTO_SHA2_512_256_HMAC:
+		hash_name = "hmac(sha512_256)";
+		break;
 
 	/* non-hmac cases */
 	case CRYPTO_MD5:
@@ -231,6 +255,14 @@ crypto_create_session(struct fcrypt *fcr, struct session_op *sop)
 		break;
 	case CRYPTO_SHA2_512:
 		hash_name = "sha512";
+		hmac_mode = 0;
+		break;
+	case CRYPTO_SHA2_512_224:
+		hash_name = "sha512_224";
+		hmac_mode = 0;
+		break;
+	case CRYPTO_SHA2_512_256:
+		hash_name = "sha512_256";
 		hmac_mode = 0;
 		break;
 	default:
@@ -848,6 +880,9 @@ cryptodev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg_)
 	struct session_op sop;
 	struct kernel_crypt_op kcop;
 	struct kernel_crypt_auth_op kcaop;
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 3, 0))
+	struct kernel_crypt_pkop pkop;
+#endif
 	struct crypt_priv *pcr = filp->private_data;
 	struct fcrypt *fcr;
 	struct session_info_op siop;
@@ -864,7 +899,14 @@ cryptodev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg_)
 
 	switch (cmd) {
 	case CIOCASYMFEAT:
-		return put_user(0, p);
+		ses = 0;
+		if (crypto_has_alg("rsa", 0, 0)) {
+			ses |= CRF_MOD_EXP;
+		}
+		if (crypto_has_alg("ecdsa", 0, 0)) {
+			ses |= CRF_ECDSA_SIGN | CRF_ECDSA_VERIFY;
+		}
+		return put_user(ses, p);
 	case CRIOGET:
 		fd = clonefd(filp);
 		ret = put_user(fd, p);
@@ -912,6 +954,14 @@ cryptodev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg_)
 			return -EFAULT;
 		return crypto_copy_hash_state(fcr, cphop.dst_ses, cphop.src_ses);
 #endif /* CIOCPHASH */
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 3, 0))
+	case CIOCKEY:
+		ret = copy_from_user(&pkop.pkop, arg, sizeof(struct crypt_kop));
+		if (ret == 0) {
+			ret = crypto_run_asym(&pkop);
+		}
+		return ret;
+#endif
 	case CIOCCRYPT:
 		if (unlikely(ret = kcop_from_user(&kcop, fcr, arg))) {
 			dwarning(1, "Error copying from user");

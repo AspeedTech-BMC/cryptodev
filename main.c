@@ -48,7 +48,9 @@
 #include "zc.h"
 #include "cryptlib.h"
 #include "version.h"
-
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 3, 0))
+#include <crypto/akcipher.h>
+#endif
 /* This file contains the traditional operations of encryption
  * and hashing of /dev/crypto.
  */
@@ -265,3 +267,71 @@ out_unlock:
 	crypto_put_session(ses_ptr);
 	return ret;
 }
+
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 3, 0))
+int crypto_run_asym(struct kernel_crypt_pkop *pkop)
+{
+	int err;
+
+	switch (pkop->pkop.crk_op) {
+	case CRK_MOD_EXP: /* RSA_PUB or PRIV form 1 */
+		pkop->s = crypto_alloc_akcipher("rsa", 0, 0);
+		if (IS_ERR(pkop->s)) {
+			return PTR_ERR(pkop->s);
+		}
+
+		pkop->req = akcipher_request_alloc(pkop->s, GFP_KERNEL);
+		if (pkop->req == NULL) {
+			err = -ENOMEM;
+			goto out_free_tfm;
+		}
+		if (pkop->pkop.crk_iparams != 3 && pkop->pkop.crk_oparams != 1) {
+			err = -EINVAL;
+			goto out_free_req;
+		}
+		err = crypto_bn_modexp(pkop);
+		break;
+#ifdef CRYPTODEV_ECDSA_ENABLE
+	case CRK_ECDSA_SIGN:
+	case CRK_ECDSA_VERIFY:
+		
+		pkop->s = crypto_alloc_akcipher("ecdsa", 0, 0);
+		if (IS_ERR(pkop->s)) {
+			return PTR_ERR(pkop->s);
+		}
+
+		pkop->req = akcipher_request_alloc(pkop->s, GFP_KERNEL);
+		if (pkop->req == NULL) {
+			err = -ENOMEM;
+			goto out_free_req;
+		}
+
+		if (pkop->pkop.crk_op == CRK_ECDSA_SIGN) {
+			if (pkop->pkop.crk_iparams != 3 && pkop->pkop.crk_oparams != 2) {
+				err = -EINVAL;
+				goto out_free_req;
+			}
+		} else {
+			if (pkop->pkop.crk_iparams != 6 && pkop->pkop.crk_oparams != 0) {
+				err = -EINVAL;
+				goto out_free_req;
+			}
+		}
+		
+		err = cryptodev_ecdsa(pkop);
+		break;
+#endif
+	default:
+		err = -EINVAL;
+		break;
+	}
+
+out_free_req:
+	kfree(pkop->req);
+
+out_free_tfm:
+	crypto_free_akcipher(pkop->s);
+
+	return err;
+}
+#endif

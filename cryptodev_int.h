@@ -19,6 +19,9 @@
 #include <linux/scatterlist.h>
 #include <crypto/cryptodev.h>
 #include <crypto/aead.h>
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 3, 0))
+#include <crypto/internal/rsa.h>
+#endif
 
 #define PFX "cryptodev: "
 #define dprintk(level, severity, format, a...)			\
@@ -34,6 +37,11 @@
 #define dinfo(level, format, a...) dprintk(level, KERN_INFO, format, ##a)
 #define ddebug(level, format, a...) dprintk(level, KERN_DEBUG, format, ##a)
 
+
+struct cryptodev_result {
+	struct completion completion;
+	int err;
+};
 
 extern int cryptodev_verbosity;
 
@@ -105,6 +113,18 @@ struct kernel_crypt_auth_op {
 	struct task_struct *task;
 	struct mm_struct *mm;
 };
+
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 3, 0))
+struct kernel_crypt_pkop {
+	struct crypt_kop pkop;
+
+	struct crypto_akcipher *s;    /* Transform pointer from CryptoAPI */
+	struct akcipher_request *req; /* PKC request allocated from CryptoAPI */
+	struct cryptodev_result result;	/* updated by completion handler */
+};
+
+int crypto_run_asym(struct kernel_crypt_pkop *pkop);
+#endif
 
 /* auth */
 
