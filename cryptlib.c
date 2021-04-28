@@ -517,22 +517,12 @@ out:
 void reverse_buf(uint8_t *buf, size_t buf_len)
 {
 	int i;
-	int nmsb;
 	uint8_t *end;
 	uint8_t tmp;
 
-	nmsb = buf_len;
+	end = buf + buf_len;
 
-	for (i = buf_len - 1; i >= 0; i--) {
-		if(buf[i] == 0)
-			nmsb--;
-		else
-			break;
-	}
-
-	end = buf + nmsb;
-
-	for (i = 0; i < nmsb/2; i++) {
+	for (i = 0; i < buf_len/2; i++) {
 		end--;
 
 		tmp = *buf;
@@ -739,7 +729,7 @@ int crypto_bn_modexp(struct kernel_crypt_pkop *pkop)
 	err = waitfor(&pkop->result, err);
 
 	if (err == 0) {
-		reverse_buf(c_buf, c_sz);
+		reverse_buf(c_buf, pkop->req->dst_len);
 		err = copy_to_user(cop->crk_param[3].crp_p, c_buf, c_sz);
 	}
 
